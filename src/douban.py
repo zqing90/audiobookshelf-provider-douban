@@ -1,3 +1,4 @@
+import os
 import random
 import re
 import time
@@ -23,7 +24,7 @@ class DoubanBookSearcher:
     DOUBAN_CONCURRENCY_SIZE = 3  # 查询条目数
     DOUBAN_BOOK_URL_PATTERN = re.compile(".*/subject/(\\d+)/?")
 
-    def __init__(self):
+    def __init__(self,base_url=""):
         self.book_loader = DoubanBookLoader()
         # self.thread_pool = ThreadPoolExecutor(max_workers=3, thread_name_prefix='douban_async')
 
@@ -57,7 +58,7 @@ class DoubanBookSearcher:
                     book_urls.append(parsed)
         return book_urls
 
-    def search_books(self, query):
+    def search_books(self, query,local_base_url="",proxy_url=""):
         """通过关键字搜索电子书信息
 
         Args:
@@ -72,7 +73,13 @@ class DoubanBookSearcher:
         for book_url in book_urls:
             book = self.book_loader.load_book(book_url)
             if(book is not None):
+                # 判断是否使用本地图片资源
+                if local_base_url !="":
+                    book.use_local(local_base_url)
+                if proxy_url != "":
+                    book.use_proxy(proxy_url)
                 books.append(book)
+
         # 转化成audiobookshelf对象
         matches = {"matches":books}
         return matches
@@ -95,7 +102,7 @@ class DoubanBookHtmlParser:
         book.title = self.get_text(title_element)
         share_element = html.xpath("//a[@data-url]")
         if len(share_element):
-            url = share_element[0].attrib['data-url']
+            url =  share_element[0].attrib['data-url']
         # book.url = url
         id_match = self.id_pattern.match(url)
         if id_match:
@@ -107,6 +114,8 @@ class DoubanBookHtmlParser:
                 book.cover = ''
             else:
                 book.cover = cover
+                book.cover_orign = cover
+                #book.cover_local = self.store_img(cover)
         # rating_element = html.xpath("//strong[@property='v:average']")
         # book.rating = self.get_rating(rating_element)
         
@@ -179,6 +188,49 @@ class DoubanBookHtmlParser:
         clean = re.compile('<.*?>')
         return re.sub(clean, '', text)
     
+    def store_img(self,image_url,tmp_dir="tmp"):
+        """存储文件到本地
+
+        Args:
+            image_url (string): 图片原始地址
+            tmp_dir (str, optional): _description_. Defaults to "tmp".
+
+        Returns:
+            _type_: 本地文件地址
+        """
+        local_url=""
+        response = requests.get(image_url, headers=DEFAULT_HEADERS)
+        # 当前工作目录
+        current_directory = os.getcwd()
+        file_name = self.get_image_filename_from_url(image_url)
+        #临时文件夹
+        dir_path = os.path.join(current_directory, "src",tmp_dir)
+        if not os.path.exists(dir_path):
+            os.makedirs(dir_path)
+        #文件目录
+        file_path = os.path.join(dir_path,file_name)
+        if os.path.exists(file_path):
+            os.remove(file_path)
+
+        # 检查请求是否成功
+        if response.status_code == 200:
+            # 打开文件，以二进制写入模式
+            with open(file_path, 'wb') as file:
+                file.write(response.content)
+            local_url = "/"+ tmp_dir + "/" + file_name
+            print(f"转换好的url:{local_url}")
+        else:
+            print(f"无法获取图片: {response.status_code}")
+        return local_url
+    
+    def get_image_filename_from_url(self,image_url):
+        # 解析URL
+        parsed_url = urlparse(image_url)
+        # 从路径中提取文件名
+        path = parsed_url.path
+        # 获取最后一个斜杠后的部分作为文件名
+        filename = path.split('/')[-1]
+        return filename
 
 class DoubanBookLoader:
 
@@ -222,6 +274,8 @@ class BookMetadata:
     publishedYear = ""
     description = ""
     cover = "" # 封面
+    cover_orign = ""
+    cover_local = ""
     isbn = ""
     asin = ""
     genres = ""
@@ -232,6 +286,22 @@ class BookMetadata:
 
     def __init__(self):
         pass
+
+    def use_local(self,base_url):
+        """使用本地
+
+        Args:
+            BookMetadata (string): 本地base_url
+
+        Returns:
+            _type_: 自身
+        """
+        self.cover = base_url +self.cover_local
+        return self
+    
+    def use_proxy(self,proxy_url):
+        self.cover = f"{proxy_url}{self.cover}"
+    
 
 
 
