@@ -48,6 +48,20 @@ python main.py
 ![效果图](./images/运行效果图-windows.PNG)
 
 ## 3. 使用docker
+docker compose 配置文件
+```
+version: "3.7"
+services:
+  audiobookshelf-provider-douban:
+    image: zqing90/audiobookshelf-provider-douban:latest
+    ports:
+      - 8000:8000
+    restart: always
+    container_name: audiobookshelf-provider-douban
+    environment:
+      - TZ=Asia/Shanghai
+```
+
 
 
 # 如何使用
