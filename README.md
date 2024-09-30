@@ -102,7 +102,7 @@ services:
 
 ## 规划
 - [x] 使用python venv打包,方便携带使用
-- [] 打包docker镜像推送至dockerhub
+- [x] 打包docker镜像推送至dockerhub
 
 
 
