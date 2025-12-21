@@ -15,7 +15,7 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 # 指定静态文件夹的路径
 static_folder_path = os.path.join(base_dir, "tmp")
 
-
+PROXY_IMAGE_MODE    = os.environ.get("PROXY_IMAGE_MODE", "original")
 
 #静态目录
 app.mount("/tmp", StaticFiles(directory=static_folder_path), name="tmp")
@@ -28,12 +28,19 @@ async def search(request:FastAPIRequest,query:str=None,auther:str=None):
     
     if str is not None and str != "":
         book_search = DoubanBookSearcher()
+        
         # 直接使用豆瓣的地址
-        # books = book_search.search_books(query)
+        if PROXY_IMAGE_MODE in ('original'):
+            books = book_search.search_books(query)
+        
         # 图片代理转换地址
-        books = book_search.search_books(query,proxy_url=proxy_url)
+        elif PROXY_IMAGE_MODE in ('proxy'):
+            books = book_search.search_books(query,proxy_url=proxy_url)
+        
         # 本地下载后提供静态地址
-        # books = book_search.search_books(query,local_base_url)
+        elif PROXY_IMAGE_MODE in ('local'):
+            books = book_search.search_books(query,local_base_url)
+
     return books
 
 @app.get("/list_tmp_files", response_class=HTMLResponse)
