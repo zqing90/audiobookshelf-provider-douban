@@ -4,6 +4,7 @@ from fastapi import FastAPI, HTTPException, Request as FastAPIRequest
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import requests
+import time
 
 from douban import DoubanBookSearcher
 
@@ -92,6 +93,7 @@ async def proxy_image(url: str):
             response    = requests.get(url, stream=True)
         except Exception as ex:
             response    = None
+            time.sleep(1)
     
     # 检查响应状态码是否为200 (OK)
     if response is not None and response.status_code == 200:
