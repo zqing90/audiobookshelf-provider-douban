@@ -28,7 +28,7 @@ async def search(request:FastAPIRequest,query:str=None,auther:str=None):
     
     if str is not None and str != "":
         book_search = DoubanBookSearcher()
-        
+        print(f'PROXY_IMAGE_MODE : {PROXY_IMAGE_MODE}')
         # 直接使用豆瓣的地址
         if PROXY_IMAGE_MODE in ('original'):
             books = book_search.search_books(query)
@@ -82,10 +82,19 @@ async def proxy_image(url: str):
     if url == "":
         return {"error":"proxy url is blank"}
     # 发送 GET 请求到提供的 URL
-    response = requests.get(url, stream=True)
+
+    response    = None
+    loop        = 3
+    
+    while response is None and loop < 3:
+        try:
+            loop        += 1
+            response    = requests.get(url, stream=True)
+        except Exception as ex:
+            response    = None
     
     # 检查响应状态码是否为200 (OK)
-    if response.status_code == 200:
+    if response is not None and response.status_code == 200:
         # 获取图片的内容类型
         content_type = response.headers.get('content-type', 'application/octet-stream')
         
@@ -103,7 +112,7 @@ async def proxy_image(url: str):
         )
     else:
         # 如果图片无法获取，则抛出异常
-        raise HTTPException(status_code=response.status_code, detail="Failed to fetch image")
+        raise Exception(f"Failed to fetch image : {url}")
 
 
 
