@@ -6,15 +6,57 @@ from urllib.parse import unquote, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from lxml import etree
+import logging
+import json
+import time
 
 
-DOUBAN_BASE = "https://book.douban.com/"
+DOUBAN_BASE     = "https://book.douban.com/"
 DEFAULT_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3573.0 Safari/537.36',
-    'Accept-Encoding': 'gzip, deflate',
-    'Referer': DOUBAN_BASE
+    'User-Agent'        : 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3573.0 Safari/537.36',
+    'Accept-Encoding'   : 'gzip, deflate',
+    'Referer'           : DOUBAN_BASE,
 }
+COOKIE_CLOUD_HOST   = os.environ.get("COOKIE_CLOUD_HOST")
+COOKIE_CLOUD_UUID   = os.environ.get("COOKIE_CLOUD_UUID")
+COOKIE_CLOUD_TOKEN  = os.environ.get("COOKIE_CLOUD_TOKEN")
 
+def cookie_decryption():
+
+    if COOKIE_CLOUD_HOST is None:
+        logging.warning(f'COOKIE_CLOUD_HOST is None')
+        return None
+    if COOKIE_CLOUD_UUID is None:
+        logging.warning(f'COOKIE_CLOUD_UUID is None')
+        return None
+    if COOKIE_CLOUD_TOKEN is None:
+        logging.warning(f'COOKIE_CLOUD_TOKEN is None')
+        return None
+    logging.info('start query')
+    resp    = requests.post(f'{COOKIE_CLOUD_HOST}/get/{COOKIE_CLOUD_UUID}', json={
+        "password"  : COOKIE_CLOUD_TOKEN,
+    })
+    resp_json   = resp.json()
+    cookie_data = resp_json.get('cookie_data', {})
+    cookie_item = []
+
+    for domain_key in cookie_data.keys():
+        cookies = cookie_data[domain_key]
+        for cookie in cookies:
+            cookie_domain   = cookie.get('domain', '')
+            cookie_name     = cookie.get('name', '')
+            cookie_value    = cookie.get('value', '')
+            cookie_expire   = cookie.get('expirationDate', 0)
+
+            if not cookie_domain.endswith('.douban.com'):
+                continue
+
+            if cookie_expire < time.time():
+                continue
+
+            cookie_item.append(f'{cookie_name}={cookie_value}')
+
+    return ';'.join(cookie_item)
 
 class DoubanBookSearcher:
     
@@ -44,10 +86,16 @@ class DoubanBookSearcher:
         Returns:
             array: 返回相关电子书的url的数组
         """
-        url = self.DOUBAN_SEARCH_URL
-        params = {"cat": self.DOUBAN_BOOK_CAT, "q": query}
-        res = requests.get(url, params, headers=DEFAULT_HEADERS)
-        book_urls = []
+
+        cookie_data  = cookie_decryption()
+        if cookie_data is not None:
+            DEFAULT_HEADERS['Cookie'] = cookie_data
+
+
+        url         = self.DOUBAN_SEARCH_URL
+        params      = {"cat": self.DOUBAN_BOOK_CAT, "q": query}
+        res         = requests.get(url, params, headers=DEFAULT_HEADERS)
+        book_urls   = []
         if res.status_code in [200, 201]:
             html = etree.HTML(res.content)
             alist = html.xpath('//a[@class="nbg"]')
@@ -68,6 +116,7 @@ class DoubanBookSearcher:
             array: _description_
         """
         book_urls = self.load_book_urls_new(query)
+        logging.warning(book_urls)
         books = []
         
         for book_url in book_urls:
@@ -125,12 +174,12 @@ class DoubanBookHtmlParser:
             if text.startswith("作者") :
                 authors = []
                 authors.extend([self.get_text(author_element) for author_element in
-                                     filter(self.author_filter, element.findall("..//a"))])
+                                    filter(self.author_filter, element.findall("..//a"))])
                 book.author = ' '.join(authors)
             elif text.startswith("出版社"):
                 book.publisher = self.get_tail(element)
             elif text.startswith("副标题"):
-                 book.subtitle = self.get_tail(element)
+                book.subtitle = self.get_tail(element)
             elif text.startswith("出版年"):
                 book.publishedYear = self.get_publish_date(self.get_tail(element))
             elif text.startswith("ISBN"):
@@ -198,6 +247,11 @@ class DoubanBookHtmlParser:
         Returns:
             _type_: 本地文件地址
         """
+
+        cookie_data  = cookie_decryption()
+        if cookie_data is not None:
+            DEFAULT_HEADERS['Cookie'] = cookie_data
+
         local_url=""
         response = requests.get(image_url, headers=DEFAULT_HEADERS)
         # 当前工作目录
@@ -249,6 +303,12 @@ class DoubanBookLoader:
         book = None
         self.random_sleep()
         start_time = time.time()
+
+        cookie_data  = cookie_decryption()
+        if cookie_data is not None:
+            DEFAULT_HEADERS['Cookie'] = cookie_data
+
+
         res = requests.get(url, headers=DEFAULT_HEADERS)
         if res.status_code in [200, 201]:
             print("下载书籍:{}成功,耗时{:.0f}ms".format(url, (time.time() - start_time) * 1000))

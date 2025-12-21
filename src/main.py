@@ -22,10 +22,10 @@ app.mount("/tmp", StaticFiles(directory=static_folder_path), name="tmp")
 
 @app.get("/search")
 async def search(request:FastAPIRequest,query:str=None,auther:str=None):
-    books=[]
-    local_base_url = f"{request.url.scheme}://{request.url.hostname}:{request.url.port}"
-    proxy_url =f"{local_base_url}/proxy-image/"
-    print(local_base_url)
+    books           = []
+    local_base_url  = f"{request.url.scheme}://{request.url.hostname}:{request.url.port}"
+    proxy_url       = f"{local_base_url}/proxy-image/"
+    
     if str is not None and str != "":
         book_search = DoubanBookSearcher()
         # 直接使用豆瓣的地址
@@ -102,4 +102,9 @@ async def proxy_image(url: str):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app,
+        # "main:app", reload=True,
+        host="0.0.0.0", 
+        port=8000, 
+    )

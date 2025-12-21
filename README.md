@@ -72,6 +72,26 @@ services:
 服务器地址，如：http://192.168.8.1:8000
 
 # 可能出现的问题
+
+* 豆瓣接口 403
+
+解决方案：接入 [CookieCloud](https://github.com/easychen/CookieCloud)
+```
+version: "3.7"
+services:
+  audiobookshelf-provider-douban:
+    image: zqing90/audiobookshelf-provider-douban:latest
+    ports:
+      - 8000:8000
+    restart: always
+    container_name: audiobookshelf-provider-douban
+    environment:
+      - TZ=Asia/Shanghai
+      - COOKIE_CLOUD_HOST=xxx
+      - COOKIE_CLOUD_UUID=xxx
+      - COOKIE_CLOUD_TOKEN=xxx
+```
+
 * 下载封面的时候blocked
 
 解决方案：audiobookshelf 容器添加环境变量`DISABLE_SSRF_REQUEST_FILTER=1`
