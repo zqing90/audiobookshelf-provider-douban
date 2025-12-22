@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 import requests
 import time
 
-from douban import DoubanBookSearcher
+from douban import DoubanBookSearcher, cookie_decryption
 
 app = FastAPI()
 
@@ -85,12 +85,18 @@ async def proxy_image(url: str):
     # 发送 GET 请求到提供的 URL
 
     response    = None
-    loop        = 3
-    
+    loop        = 0
+
     while response is None and loop < 3:
         try:
             loop        += 1
-            response    = requests.get(url, stream=True)
+            headers     = {}
+            cookie_data = cookie_decryption()
+            
+            if cookie_data is not None:
+                headers['Cookie'] = cookie_data
+
+            response    = requests.get(url, stream=True, headers=headers)
         except Exception as ex:
             response    = None
             time.sleep(1)
@@ -99,17 +105,19 @@ async def proxy_image(url: str):
     if response is not None and response.status_code == 200:
         # 获取图片的内容类型
         content_type = response.headers.get('content-type', 'application/octet-stream')
-        
+
+        headers = {
+            "Content-Disposition": f"inline; filename=image.{content_type.split('/')[-1]}",
+            'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3573.0 Safari/537.36',
+            'Accept-Encoding': 'gzip, deflate',
+            'Referer': 'https://book.douban.com/'
+        }                                                      
+
         # 使用StreamingResponse返回图片内容
         return StreamingResponse(
             response.iter_content(chunk_size=1024),
-            media_type=content_type,
-            headers = {
-                "Content-Disposition": f"inline; filename=image.{content_type.split('/')[-1]}",
-                'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3573.0 Safari/537.36',
-                'Accept-Encoding': 'gzip, deflate',
-                'Referer': 'https://book.douban.com/'
-                }
+            media_type  = content_type,
+            headers     = headers
 
         )
     else:
