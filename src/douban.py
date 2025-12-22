@@ -61,9 +61,9 @@ def cookie_decryption():
 class DoubanBookSearcher:
     
 
-    DOUBAN_SEARCH_URL = "https://www.douban.com/search"
-    DOUBAN_BOOK_CAT = "1001"
-    DOUBAN_CONCURRENCY_SIZE = 3  # 查询条目数
+    DOUBAN_SEARCH_URL       = "https://www.douban.com/search"
+    DOUBAN_BOOK_CAT         = "1001"
+    DOUBAN_CONCURRENCY_SIZE = 10  # 查询条目数
     DOUBAN_BOOK_URL_PATTERN = re.compile(".*/subject/(\\d+)/?")
 
     def __init__(self,base_url=""):
