@@ -53,7 +53,7 @@ docker compose 配置文件
 version: "3.7"
 services:
   audiobookshelf-provider-douban:
-    image: zqing90/audiobookshelf-provider-douban:latest
+    image: happyeddie/audiobookshelf-provider-douban:latest
     ports:
       - 8000:8000
     restart: always
@@ -80,7 +80,7 @@ services:
 version: "3.7"
 services:
   audiobookshelf-provider-douban:
-    image: zqing90/audiobookshelf-provider-douban:latest
+    image: happyeddie/audiobookshelf-provider-douban:latest
     ports:
       - 8000:8000
     restart: always
