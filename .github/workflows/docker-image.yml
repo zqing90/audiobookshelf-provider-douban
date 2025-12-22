@@ -7,11 +7,8 @@ on:
     branches: [ "main" ]
 
 jobs:
-
   build:
-
-    runs-on: python:3.10-slim
-
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     - name: Build the Docker image
