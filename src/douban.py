@@ -179,7 +179,7 @@ class DoubanBookHtmlParser:
                 authors = []
                 authors.extend([self.get_text(author_element) for author_element in
                                     filter(self.author_filter, element.findall("..//a"))])
-                book.author = ' '.join(authors)
+                book.author = ', '.join(authors)
             elif text.startswith("出版社"):
                 book.publisher = self.get_tail(element)
             elif text.startswith("副标题"):
@@ -191,8 +191,9 @@ class DoubanBookHtmlParser:
             
         summary_element = html.xpath("//div[@id='link-report']//div[@class='intro']")
         if len(summary_element):
-            book.description = etree.tostring(summary_element[-1], encoding="utf8").decode("utf8").strip()
-            book.description = self.remove_html_tags(book.description)
+            book.description        = etree.tostring(summary_element[-1], encoding="utf8").decode("utf8").strip()
+            book.description        = self.remove_html_tags(book.description)
+            book.descriptionPlain   = book.description
         tag_elements = html.xpath("//a[contains(@class, 'tag')]")
         if len(tag_elements):
             book.tags = [self.get_text(tag_element) for tag_element in tag_elements]
@@ -337,6 +338,7 @@ class BookMetadata:
     publisher = ""
     publishedYear = ""
     description = ""
+    descriptionPlain = ""
     cover = "" # 封面
     cover_orign = ""
     cover_local = ""
