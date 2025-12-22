@@ -116,18 +116,22 @@ class DoubanBookSearcher:
             array: _description_
         """
         book_urls = self.load_book_urls_new(query)
-        logging.warning(book_urls)
-        books = []
         
-        for book_url in book_urls:
+        def _load_book_with_options(book_url):
+            print(f'开始抓取页面 {book_url}')
             book = self.book_loader.load_book(book_url)
-            if(book is not None):
+            if book:
                 # 判断是否使用本地图片资源
-                if local_base_url !="":
+                if local_base_url:
                     book.use_local(local_base_url)
-                if proxy_url != "":
+                if proxy_url:
                     book.use_proxy(proxy_url)
-                books.append(book)
+            return book
+
+        with ThreadPoolExecutor(max_workers=self.DOUBAN_CONCURRENCY_SIZE) as executor:
+            # list() 会触发执行并等待所有任务完成
+            loaded_books = executor.map(_load_book_with_options, book_urls)
+            books = [book for book in loaded_books if book is not None]
 
         # 转化成audiobookshelf对象
         matches = {"matches":books}
