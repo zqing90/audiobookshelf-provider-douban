@@ -135,6 +135,8 @@ class DoubanBookSearcher:
 
         # 转化成audiobookshelf对象
         matches = {"matches":books}
+        # for book in books:
+        #     print(book.__dict__)
         return matches
     
     
@@ -189,6 +191,10 @@ class DoubanBookHtmlParser:
                 book.publishedYear = None if publishedDate is None else publishedDate.replace('.', '-').split('-')[0]
             elif text.startswith("ISBN"):
                 book.isbn= self.get_tail(element)
+            elif text.startswith("丛书"):
+                book.series = [{
+                    "series": self.get_tail(element),
+                }]
             
         summary_element = html.xpath("//div[@id='link-report']//div[@class='intro']")
         if len(summary_element):
@@ -199,6 +205,7 @@ class DoubanBookHtmlParser:
             book.tags = [self.get_text(tag_element) for tag_element in tag_elements]
         else:
             book.tags = self.get_tags(book_content)
+
         return book
 
     def get_tags(self, book_content):
@@ -345,7 +352,7 @@ class BookMetadata:
     asin = ""
     genres = ""
     tags = []
-    series = ""
+    series = []
     language = ""
     duration = 0
 
