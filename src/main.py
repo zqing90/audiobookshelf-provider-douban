@@ -16,7 +16,7 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 # 指定静态文件夹的路径
 static_folder_path = os.path.join(base_dir, "tmp")
 
-PROXY_IMAGE_MODE    = os.environ.get("PROXY_IMAGE_MODE", "original")
+PROXY_IMAGE_MODE    = os.environ.get("PROXY_IMAGE_MODE", "proxy")
 
 #静态目录
 app.mount("/tmp", StaticFiles(directory=static_folder_path), name="tmp")
