@@ -185,15 +185,15 @@ class DoubanBookHtmlParser:
             elif text.startswith("副标题"):
                 book.subtitle = self.get_tail(element)
             elif text.startswith("出版年"):
-                book.publishedYear = self.get_publish_date(self.get_tail(element))
+                publishedDate   = self.get_publish_date(self.get_tail(element))
+                book.publishedYear = None if publishedDate is None else publishedDate.replace('.', '-').split('-')[0]
             elif text.startswith("ISBN"):
                 book.isbn= self.get_tail(element)
             
         summary_element = html.xpath("//div[@id='link-report']//div[@class='intro']")
         if len(summary_element):
             book.description        = etree.tostring(summary_element[-1], encoding="utf8").decode("utf8").strip()
-            book.description        = self.remove_html_tags(book.description)
-            book.descriptionPlain   = book.description
+            book.description        = self.remove_html_tags(book.description).strip()
         tag_elements = html.xpath("//a[contains(@class, 'tag')]")
         if len(tag_elements):
             book.tags = [self.get_text(tag_element) for tag_element in tag_elements]
@@ -338,7 +338,6 @@ class BookMetadata:
     publisher = ""
     publishedYear = ""
     description = ""
-    descriptionPlain = ""
     cover = "" # 封面
     cover_orign = ""
     cover_local = ""
