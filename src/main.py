@@ -4,8 +4,9 @@ from fastapi import FastAPI, HTTPException, Request as FastAPIRequest
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import requests
+import time
 
-from douban import DoubanBookSearcher
+from douban import DoubanBookSearcher, cookie_decryption
 
 app = FastAPI()
 
@@ -15,25 +16,32 @@ base_dir = os.path.dirname(os.path.abspath(__file__))
 # 指定静态文件夹的路径
 static_folder_path = os.path.join(base_dir, "tmp")
 
-
+PROXY_IMAGE_MODE    = os.environ.get("PROXY_IMAGE_MODE", "proxy")
 
 #静态目录
 app.mount("/tmp", StaticFiles(directory=static_folder_path), name="tmp")
 
 @app.get("/search")
 async def search(request:FastAPIRequest,query:str=None,auther:str=None):
-    books=[]
-    local_base_url = f"{request.url.scheme}://{request.url.hostname}:{request.url.port}"
-    proxy_url =f"{local_base_url}/proxy-image/"
-    print(local_base_url)
+    books           = []
+    local_base_url  = f"{request.url.scheme}://{request.url.hostname}:{request.url.port}"
+    proxy_url       = f"{local_base_url}/proxy-image/"
+    
     if str is not None and str != "":
         book_search = DoubanBookSearcher()
+        print(f'PROXY_IMAGE_MODE : {PROXY_IMAGE_MODE}')
         # 直接使用豆瓣的地址
-        # books = book_search.search_books(query)
+        if PROXY_IMAGE_MODE in ('original'):
+            books = book_search.search_books(query)
+        
         # 图片代理转换地址
-        books = book_search.search_books(query,proxy_url=proxy_url)
+        elif PROXY_IMAGE_MODE in ('proxy'):
+            books = book_search.search_books(query,proxy_url=proxy_url)
+        
         # 本地下载后提供静态地址
-        # books = book_search.search_books(query,local_base_url)
+        elif PROXY_IMAGE_MODE in ('local'):
+            books = book_search.search_books(query,local_base_url)
+
     return books
 
 @app.get("/list_tmp_files", response_class=HTMLResponse)
@@ -75,31 +83,54 @@ async def proxy_image(url: str):
     if url == "":
         return {"error":"proxy url is blank"}
     # 发送 GET 请求到提供的 URL
-    response = requests.get(url, stream=True)
+
+    response    = None
+    loop        = 0
+
+    while response is None and loop < 3:
+        try:
+            loop        += 1
+            headers     = {}
+            cookie_data = cookie_decryption()
+            
+            if cookie_data is not None:
+                headers['Cookie'] = cookie_data
+
+            response    = requests.get(url, stream=True, headers=headers)
+        except Exception as ex:
+            response    = None
+            time.sleep(1)
     
     # 检查响应状态码是否为200 (OK)
-    if response.status_code == 200:
+    if response is not None and response.status_code == 200:
         # 获取图片的内容类型
         content_type = response.headers.get('content-type', 'application/octet-stream')
-        
+
+        headers = {
+            "Content-Disposition": f"inline; filename=image.{content_type.split('/')[-1]}",
+            'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3573.0 Safari/537.36',
+            'Accept-Encoding': 'gzip, deflate',
+            'Referer': 'https://book.douban.com/'
+        }                                                      
+
         # 使用StreamingResponse返回图片内容
         return StreamingResponse(
             response.iter_content(chunk_size=1024),
-            media_type=content_type,
-            headers = {
-                "Content-Disposition": f"inline; filename=image.{content_type.split('/')[-1]}",
-                'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3573.0 Safari/537.36',
-                'Accept-Encoding': 'gzip, deflate',
-                'Referer': 'https://book.douban.com/'
-                }
+            media_type  = content_type,
+            headers     = headers
 
         )
     else:
         # 如果图片无法获取，则抛出异常
-        raise HTTPException(status_code=response.status_code, detail="Failed to fetch image")
+        raise Exception(f"Failed to fetch image : {url}")
 
 
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        app,
+        # "main:app", reload=True,
+        host="0.0.0.0", 
+        port=8000, 
+    )

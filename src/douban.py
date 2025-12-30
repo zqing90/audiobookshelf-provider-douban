@@ -6,22 +6,64 @@ from urllib.parse import unquote, urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 from lxml import etree
+import logging
+import json
+import time
 
 
-DOUBAN_BASE = "https://book.douban.com/"
+DOUBAN_BASE     = "https://book.douban.com/"
 DEFAULT_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3573.0 Safari/537.36',
-    'Accept-Encoding': 'gzip, deflate',
-    'Referer': DOUBAN_BASE
+    'User-Agent'        : 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/71.0.3573.0 Safari/537.36',
+    'Accept-Encoding'   : 'gzip, deflate',
+    'Referer'           : DOUBAN_BASE,
 }
+COOKIE_CLOUD_HOST   = os.environ.get("COOKIE_CLOUD_HOST")
+COOKIE_CLOUD_UUID   = os.environ.get("COOKIE_CLOUD_UUID")
+COOKIE_CLOUD_TOKEN  = os.environ.get("COOKIE_CLOUD_TOKEN")
 
+def cookie_decryption():
+
+    if COOKIE_CLOUD_HOST is None:
+        logging.warning(f'COOKIE_CLOUD_HOST is None')
+        return None
+    if COOKIE_CLOUD_UUID is None:
+        logging.warning(f'COOKIE_CLOUD_UUID is None')
+        return None
+    if COOKIE_CLOUD_TOKEN is None:
+        logging.warning(f'COOKIE_CLOUD_TOKEN is None')
+        return None
+    logging.info('start query')
+    resp    = requests.post(f'{COOKIE_CLOUD_HOST}/get/{COOKIE_CLOUD_UUID}', json={
+        "password"  : COOKIE_CLOUD_TOKEN,
+    })
+    resp_json   = resp.json()
+    cookie_data = resp_json.get('cookie_data', {})
+    cookie_item = []
+
+    for domain_key in cookie_data.keys():
+        cookies = cookie_data[domain_key]
+        for cookie in cookies:
+            cookie_domain   = cookie.get('domain', '')
+            cookie_name     = cookie.get('name', '')
+            cookie_value    = cookie.get('value', '')
+            cookie_expire   = cookie.get('expirationDate', 0)
+
+            if not cookie_domain.endswith('.douban.com'):
+                continue
+
+            if cookie_expire < time.time():
+                continue
+
+            cookie_item.append(f'{cookie_name}={cookie_value}')
+
+    return ';'.join(cookie_item)
 
 class DoubanBookSearcher:
     
 
-    DOUBAN_SEARCH_URL = "https://www.douban.com/search"
-    DOUBAN_BOOK_CAT = "1001"
-    DOUBAN_CONCURRENCY_SIZE = 3  # 查询条目数
+    DOUBAN_SEARCH_URL       = "https://www.douban.com/search"
+    DOUBAN_BOOK_CAT         = "1001"
+    DOUBAN_CONCURRENCY_SIZE = int(os.environ.get("DOUBAN_CONCURRENCY_SIZE", 3)) # 查询条目数
     DOUBAN_BOOK_URL_PATTERN = re.compile(".*/subject/(\\d+)/?")
 
     def __init__(self,base_url=""):
@@ -44,10 +86,16 @@ class DoubanBookSearcher:
         Returns:
             array: 返回相关电子书的url的数组
         """
-        url = self.DOUBAN_SEARCH_URL
-        params = {"cat": self.DOUBAN_BOOK_CAT, "q": query}
-        res = requests.get(url, params, headers=DEFAULT_HEADERS)
-        book_urls = []
+
+        cookie_data  = cookie_decryption()
+        if cookie_data is not None:
+            DEFAULT_HEADERS['Cookie'] = cookie_data
+
+
+        url         = self.DOUBAN_SEARCH_URL
+        params      = {"cat": self.DOUBAN_BOOK_CAT, "q": query}
+        res         = requests.get(url, params, headers=DEFAULT_HEADERS)
+        book_urls   = []
         if res.status_code in [200, 201]:
             html = etree.HTML(res.content)
             alist = html.xpath('//a[@class="nbg"]')
@@ -68,20 +116,27 @@ class DoubanBookSearcher:
             array: _description_
         """
         book_urls = self.load_book_urls_new(query)
-        books = []
         
-        for book_url in book_urls:
+        def _load_book_with_options(book_url):
+            print(f'开始抓取页面 {book_url}')
             book = self.book_loader.load_book(book_url)
-            if(book is not None):
+            if book:
                 # 判断是否使用本地图片资源
-                if local_base_url !="":
+                if local_base_url:
                     book.use_local(local_base_url)
-                if proxy_url != "":
+                if proxy_url:
                     book.use_proxy(proxy_url)
-                books.append(book)
+            return book
+
+        with ThreadPoolExecutor(max_workers=self.DOUBAN_CONCURRENCY_SIZE) as executor:
+            # list() 会触发执行并等待所有任务完成
+            loaded_books = executor.map(_load_book_with_options, book_urls)
+            books = [book for book in loaded_books if book is not None]
 
         # 转化成audiobookshelf对象
         matches = {"matches":books}
+        # for book in books:
+        #     print(book.__dict__)
         return matches
     
     
@@ -125,26 +180,32 @@ class DoubanBookHtmlParser:
             if text.startswith("作者") :
                 authors = []
                 authors.extend([self.get_text(author_element) for author_element in
-                                     filter(self.author_filter, element.findall("..//a"))])
-                book.author = ' '.join(authors)
+                                    filter(self.author_filter, element.findall("..//a"))])
+                book.author = ', '.join(authors)
             elif text.startswith("出版社"):
                 book.publisher = self.get_tail(element)
             elif text.startswith("副标题"):
-                 book.subtitle = self.get_tail(element)
+                book.subtitle = self.get_tail(element)
             elif text.startswith("出版年"):
-                book.publishedYear = self.get_publish_date(self.get_tail(element))
+                publishedDate   = self.get_publish_date(self.get_tail(element))
+                book.publishedYear = None if publishedDate is None else publishedDate.replace('.', '-').split('-')[0]
             elif text.startswith("ISBN"):
                 book.isbn= self.get_tail(element)
+            elif text.startswith("丛书"):
+                book.series = [{
+                    "series": self.get_tail(element),
+                }]
             
         summary_element = html.xpath("//div[@id='link-report']//div[@class='intro']")
         if len(summary_element):
-            book.description = etree.tostring(summary_element[-1], encoding="utf8").decode("utf8").strip()
-            book.description = self.remove_html_tags(book.description)
+            book.description        = etree.tostring(summary_element[-1], encoding="utf8").decode("utf8").strip()
+            book.description        = self.remove_html_tags(book.description).strip()
         tag_elements = html.xpath("//a[contains(@class, 'tag')]")
         if len(tag_elements):
             book.tags = [self.get_text(tag_element) for tag_element in tag_elements]
         else:
             book.tags = self.get_tags(book_content)
+
         return book
 
     def get_tags(self, book_content):
@@ -198,6 +259,11 @@ class DoubanBookHtmlParser:
         Returns:
             _type_: 本地文件地址
         """
+
+        cookie_data  = cookie_decryption()
+        if cookie_data is not None:
+            DEFAULT_HEADERS['Cookie'] = cookie_data
+
         local_url=""
         response = requests.get(image_url, headers=DEFAULT_HEADERS)
         # 当前工作目录
@@ -249,6 +315,12 @@ class DoubanBookLoader:
         book = None
         self.random_sleep()
         start_time = time.time()
+
+        cookie_data  = cookie_decryption()
+        if cookie_data is not None:
+            DEFAULT_HEADERS['Cookie'] = cookie_data
+
+
         res = requests.get(url, headers=DEFAULT_HEADERS)
         if res.status_code in [200, 201]:
             print("下载书籍:{}成功,耗时{:.0f}ms".format(url, (time.time() - start_time) * 1000))
@@ -280,7 +352,7 @@ class BookMetadata:
     asin = ""
     genres = ""
     tags = []
-    series = ""
+    series = []
     language = ""
     duration = 0
 
